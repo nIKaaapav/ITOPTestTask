@@ -1,63 +1,84 @@
-import React, { useState, useEffect } from 'react';
-
+import React, { useState } from 'react';
+import { map,distinctUntilChanged, switchMap,buffer,debounceTime, withLatestFrom, filter, repeat, scan} from 'rxjs/operators'
+import {interval, of,fromEvent,never} from "rxjs";
+import {useObservableState, useObservable, pluckFirst} from 'observable-hooks'
 
 const TimeWrapper = () => {
-    const [seconds, setSeconds] = useState(0);
-    const [start, setStart] = useState(false);
-    let timerID = null;
+    const [state, setState] = useState('stop');
 
-    useEffect(() => {
-        if (start){
-            timerID = setInterval( () => tick(), 1000 );
-            return ()=> {
-                clearInterval(timerID);
-            };
+    const timerState$ = useObservable(pluckFirst, [state]);
 
-        } else {
-            clearInterval(timerID);
-        }
-    },);
+    const countDown$ = useObservable( () =>
+        timerState$.pipe(
+            map(state => state === 'stop'),
+            distinctUntilChanged(),
+            switchMap(stop =>
+                {
+                    console.log(stop);
+                    return stop ? of(0) :
+                    interval(1000)
+                        .pipe(
+                            repeat(),
+                            map(startTime => startTime+1),
+                            distinctUntilChanged(),
+                            withLatestFrom(timerState$),
+                            filter(([, state]) => state === 'start'),
+                            scan(time => time +1, 0)
+                        )}
+            )
 
+        )
+    );
 
-    const  tick = ()=> {
-        setSeconds(seconds+1);
-    };
-
-    const handleClickForStart = ()=> {
-        setStart(!start);
-        if(start) {
-            setSeconds(0);
-        }
-
-    };
-
-    const handleClickForWait =()=>{
-        setStart(!start)
+    const stop = () => {
+        setState(state==='start' ? 'stop' : 'start')
     };
 
     const handleClickForReset =()=>{
-        setSeconds(0);
-        clearInterval(timerID);
+        setState('stop');
+        setTimeout(()=> setState('start'), );
     };
 
-    const currentSeconds = Math.floor((seconds % 60));
-    const currentMinutes = Math.floor((seconds % (60*60))/60);
-    const currentHours = Math.floor((seconds % (60 * 60 * 24)) / (60 * 60));
+    const handleClickForWait =(e)=>{
+        const click$ = fromEvent(e.nativeEvent.target, 'click');
+        click$.pipe(
+            buffer(
+                click$.pipe(debounceTime(300))
+            ),
+            distinctUntilChanged(),
+            map(list => list.length),
+            filter(x => x === 2),
+            switchMap(res => {
+                if(res===2) {
+                    setState('pause');
+                    return []
+                }
+                return never()
+            })
+        );
 
+    };
+
+
+    const time = useObservableState(countDown$, 0);
 
     const getCurrentTime = (time)=>{
         return time < 10 ? '0' + time : time
     };
 
+    const minutes = getCurrentTime(Math.floor(time / 60));
+    const hours = getCurrentTime(Math.floor(time / 60 / 60));
+    const seconds = getCurrentTime(Math.floor(time % 60));
+
     return (
         <div>
-            <p>{getCurrentTime(currentHours)}:{getCurrentTime(currentMinutes)}:{getCurrentTime(currentSeconds)} </p>
-            <button onClick={handleClickForStart}>{start ? 'Stop' : 'Start'}</button>
+            <p>{hours}:{minutes}:{seconds}</p>
+            <button onClick={()=>stop()}>{state==='start' ? 'Stop' : 'Start'}</button>
             <button onClick={handleClickForWait}>Wait</button>
             <button onClick={handleClickForReset}>Reset</button>
         </div>
     );
-};
+}
 
 
 export default TimeWrapper;
