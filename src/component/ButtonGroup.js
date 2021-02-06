@@ -2,6 +2,7 @@ import React from 'react';
 import {fromEvent, never} from "rxjs";
 import {buffer, debounceTime, distinctUntilChanged, filter, map, switchMap} from "rxjs/operators";
 
+
 const ButtonGroup = ({state, changeState}) => {
 
     const handleClickForStop = () => {
